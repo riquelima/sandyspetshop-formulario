@@ -291,13 +291,29 @@ export default function App() {
     startTime.setHours(selectedTime, 0, 0, 0);
     const duration = SERVICES[selectedService].duration;
     const endTime = new Date(startTime.getTime() + duration * 60 * 60 * 1000);
-
     const newAppointment: Appointment = { id: new Date().toISOString(), petName: formData.petName, ownerName: formData.ownerName, whatsapp: formData.whatsapp, service: selectedService, startTime, endTime };
     
+    const day = String(startTime.getDate()).padStart(2, '0');
+    const month = String(startTime.getMonth() + 1).padStart(2, '0');
+    const year = startTime.getFullYear();
+    const formattedDate = `${day}/${month}/${year}`;
+    const hour = String(startTime.getHours()).padStart(2, '0');
+    const minute = String(startTime.getMinutes()).padStart(2, '0');
+    const formattedTime = `${hour}:${minute}`;
+
     const submissionData = {
-        id: newAppointment.id, startTime: newAppointment.startTime.toISOString(), petName: newAppointment.petName, ownerName: newAppointment.ownerName,
-        whatsapp: newAppointment.whatsapp, service: SERVICES[newAppointment.service].label, weight: PET_WEIGHT_OPTIONS[selectedWeight!],
-        addons: ADDON_SERVICES.filter(addon => selectedAddons[addon.id]).map(addon => addon.label), price: totalPrice, status: 'AGENDADO'
+        id: newAppointment.id,
+        status: 'AGENDADO',
+        date: formattedDate,
+        time: formattedTime,
+        petName: newAppointment.petName,
+        ownerName: newAppointment.ownerName,
+        whatsapp: newAppointment.whatsapp,
+        service: SERVICES[newAppointment.service].label,
+        weight: PET_WEIGHT_OPTIONS[selectedWeight!],
+        addons: ADDON_SERVICES.filter(addon => selectedAddons[addon.id]).map(addon => addon.label).join(', '),
+        price: totalPrice,
+        start_time_iso: startTime.toISOString(),
     };
 
     const supabasePayload = {
@@ -317,26 +333,21 @@ export default function App() {
         const { error: supabaseError } = await supabase.from('appointments').insert([supabasePayload]);
         if (supabaseError) throw supabaseError;
 
-        // The n8n webhook expects JSON, but the Google Apps Script webhook
-        // works more reliably with FormData when called from a browser to avoid CORS issues.
-        const sheetData = new FormData();
-        sheetData.append('id', submissionData.id);
-        sheetData.append('startTime', submissionData.startTime);
-        sheetData.append('petName', submissionData.petName);
-        sheetData.append('ownerName', submissionData.ownerName);
-        sheetData.append('whatsapp', submissionData.whatsapp);
-        sheetData.append('service', submissionData.service);
-        sheetData.append('weight', submissionData.weight);
-        sheetData.append('addons', submissionData.addons.join(', ')); // Convert array to comma-separated string
-        sheetData.append('price', String(submissionData.price));
-        sheetData.append('status', submissionData.status);
+        const webhooks = [
+          fetch("https://script.google.com/macros/s/AKfycbytIYTakaMuNLotJaHTS18yH6bjyFzKnpcr1IUsjqEgHsfS6VsVNMEre3wJjxGq1ede4g/exec", {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify(submissionData),
+          }),
+          fetch("https://n8n.intelektus.tech/webhook/form-agendamento", {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(submissionData),
+          }),
+        ];
 
-        await Promise.all([
-          // Use FormData for the Google Sheet request for better reliability
-          fetch("https://script.google.com/macros/s/AKfycbw5TO-nb7hriuJoG4s2UQXANNFurLdsybOpOwuNXH7OeSDt3oFmHTgVHya7hUoO_hrDsQ/exec", { method: 'POST', mode: 'no-cors', body: sheetData }),
-          // Keep the n8n webhook as JSON
-          fetch("https://n8n.intelektus.tech/webhook/form-agendamento", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(submissionData) })
-        ]);
+        await Promise.all(webhooks);
 
         setAppointments(prev => [...prev, newAppointment]);
         setIsModalOpen(true);
@@ -351,21 +362,15 @@ export default function App() {
         let userMessage = 'Não foi possível concluir o agendamento. Tente novamente.';
         
         if (error && typeof error === 'object' && error.message) {
-            // Handle Supabase/Postgrest errors which have a clear message
             userMessage += `\n\nErro: ${error.message}`;
-            if (error.details) {
-                 userMessage += `\nDetalhes: ${error.details}`;
-            }
+            if (error.details) userMessage += `\nDetalhes: ${error.details}`;
         } else {
-            // Fallback for other errors: try to stringify them
             try {
                 userMessage += `\n\nDebug Info: ${JSON.stringify(error, null, 2)}`;
             } catch {
-                // If stringifying fails, just convert to a simple string
                 userMessage += `\n\nDebug Info: ${String(error)}`;
             }
         }
-
         alert(userMessage);
         setIsSubmitting(false);
     }
