@@ -149,17 +149,12 @@ const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({ selectedService, select
         return counts;
     }, [selectedDate, appointments]);
 
-    if (!selectedService) {
-        return <div className="text-center text-gray-500 py-4">Por favor, selecione um serviço para ver os horários.</div>;
-    }
-
-    if (isWeekend(selectedDate) || isPastDate(selectedDate)) {
-        return <div className="text-center text-gray-500 py-4">Não há agendamentos para fins de semana ou datas passadas.</div>
-    }
-
-    const serviceDuration = SERVICES[selectedService].duration;
-
     const isSlotAvailable = useCallback((hour: number): boolean => {
+        // Guard clause for when no service is selected yet
+        if (!selectedService) return false;
+
+        const serviceDuration = SERVICES[selectedService].duration;
+
         // Rule 1: A service cannot end after the workday finishes (18:00)
         if (hour + serviceDuration > 18) {
             return false;
@@ -191,6 +186,14 @@ const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({ selectedService, select
         
         return true;
     }, [selectedService, slotCounts]);
+
+    if (!selectedService) {
+        return <div className="text-center text-gray-500 py-4">Por favor, selecione um serviço para ver os horários.</div>;
+    }
+
+    if (isWeekend(selectedDate) || isPastDate(selectedDate)) {
+        return <div className="text-center text-gray-500 py-4">Não há agendamentos para fins de semana ou datas passadas.</div>
+    }
 
     return (
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
