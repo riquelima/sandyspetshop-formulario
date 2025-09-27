@@ -307,7 +307,7 @@ export default function App() {
             setFormData({ petName: '', ownerName: '', whatsapp: '' });
             setSelectedService(null); setSelectedWeight(null); setSelectedAddons({}); setSelectedTime(null); setTotalPrice(0); setIsSubmitting(false);
             changeStep(1);
-        }, 4000);
+        }, 3000);
     } catch (error: any) {
         console.error("Error submitting appointment:", error);
         let userMessage = 'Não foi possível concluir o agendamento. Tente novamente.';
@@ -437,8 +437,8 @@ export default function App() {
                 <p><strong>Responsável:</strong> {formData.ownerName}</p>
                 <p><strong>Data:</strong> {selectedDate.toLocaleDateString('pt-BR')}</p>
                 <p><strong>Horário:</strong> {selectedTime}:00</p>
-                <p><strong>Serviço:</strong> {SERVICES[selectedService!].label}</p>
-                <p><strong>Peso:</strong> {PET_WEIGHT_OPTIONS[selectedWeight!]}</p>
+                <p><strong>Serviço:</strong> {selectedService && SERVICES[selectedService].label}</p>
+                <p><strong>Peso:</strong> {selectedWeight && PET_WEIGHT_OPTIONS[selectedWeight]}</p>
                 {ADDON_SERVICES.filter(a => selectedAddons[a.id]).length > 0 && (
                   <p><strong>Adicionais:</strong> {ADDON_SERVICES.filter(a => selectedAddons[a.id]).map(a => a.label).join(', ')}</p>
                 )}
