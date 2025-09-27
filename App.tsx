@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Appointment, ServiceType, PetWeight } from './types';
 import { SERVICES, WORKING_HOURS, MAX_CAPACITY_PER_SLOT, LUNCH_HOUR, PET_WEIGHT_OPTIONS, BASE_PRICES, ADDON_SERVICES, AddonService } from './constants';
@@ -150,41 +151,36 @@ const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({ selectedService, select
     }, [selectedDate, appointments]);
 
     const isSlotAvailable = useCallback((hour: number): boolean => {
-        // Guard clause for when no service is selected yet
         if (!selectedService) return false;
 
         const serviceDuration = SERVICES[selectedService].duration;
 
-        // Rule 1: A service cannot end after the workday finishes (18:00)
+        // Rule: Service cannot end after 6 PM (18:00)
         if (hour + serviceDuration > 18) {
             return false;
         }
 
-        // Rule 2: A service cannot span across the lunch break, with one exception
-        if (hour < LUNCH_HOUR && hour + serviceDuration > LUNCH_HOUR) {
-            // The only allowed case is a 2-hour service starting at 11:00
-            if (hour === 11 && serviceDuration === 2) {
-                // For this special case, just check the capacity of the starting slot (11:00)
-                return (slotCounts[11] || 0) < MAX_CAPACITY_PER_SLOT;
-            }
-            // All other cases crossing lunch are invalid
-            return false;
+        if (serviceDuration === 1) {
+             if (hour === LUNCH_HOUR) return false;
+             return (slotCounts[hour] || 0) < MAX_CAPACITY_PER_SLOT;
         }
 
-        // Rule 3: Check capacity for all hours the service would occupy
-        for (let i = 0; i < serviceDuration; i++) {
-            const checkHour = hour + i;
-            // We don't need to check lunch hour capacity as it's not a bookable slot
-            if (checkHour === LUNCH_HOUR) {
-                continue;
-            }
-            // If any required slot is at max capacity, the appointment is not possible
-            if ((slotCounts[checkHour] || 0) >= MAX_CAPACITY_PER_SLOT) {
+        if (serviceDuration === 2) {
+            const nextHour = hour + 1;
+            
+            // Rule: Cannot start at or cross lunch time, except for the 11:00 slot
+            if (hour === LUNCH_HOUR || nextHour === LUNCH_HOUR) {
+                if (hour === 11) { // 11:00 to 13:00 booking is allowed
+                     return (slotCounts[11] || 0) < MAX_CAPACITY_PER_SLOT;
+                }
                 return false;
             }
+            
+            // Check capacity for both hours
+            return (slotCounts[hour] || 0) < MAX_CAPACITY_PER_SLOT && (slotCounts[nextHour] || 0) < MAX_CAPACITY_PER_SLOT;
         }
-        
-        return true;
+
+        return true; // Should not be reached with current services
     }, [selectedService, slotCounts]);
 
     if (!selectedService) {
@@ -342,7 +338,8 @@ export default function App() {
       endTime,
     };
 
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw5TO-nb7hriuJoG4s2UQXANNFurLdsybOpOwuNXH7OeSDt3oFmHTgVHya7hUoO_hrDsQ/exec";
+    const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw5TO-nb7hriuJoG4s2UQXANNFurLdsybOpOwuNXH7OeSDt3oFmHTgVHya7hUoO_hrDsQ/exec";
+    const N8N_WEBHOOK_URL = "https://n8n.intelektus.tech/webhook/form-agendamento";
     
     const selectedAddonLabels = ADDON_SERVICES
       .filter(addon => selectedAddons[addon.id])
@@ -361,19 +358,23 @@ export default function App() {
     };
 
     try {
-        const response = await fetch(SCRIPT_URL, {
+        const googleSheetRequest = fetch(GOOGLE_SCRIPT_URL, {
             method: 'POST',
-            mode: 'no-cors', // Use no-cors for basic POST to Google Scripts to avoid CORS errors
-            headers: {
-                'Content-Type': 'application/json',
-            },
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(submissionData),
         });
 
-        // NOTE: With 'no-cors', we can't read the response. We optimistically assume success.
-        // For robust error handling, the Apps Script would need a more complex setup.
+        const n8nWebhookRequest = fetch(N8N_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(submissionData),
+        });
         
-        // On successful submission to spreadsheet, update local state
+        // Wait for both requests to complete
+        await Promise.all([googleSheetRequest, n8nWebhookRequest]);
+
+        // On successful submission, update local state
         setAppointments(prev => [...prev, newAppointment]);
         setIsModalOpen(true);
 
@@ -390,7 +391,7 @@ export default function App() {
         }, 3000);
 
     } catch (error) {
-        console.error("Error submitting to Google Sheet:", error);
+        console.error("Error submitting data:", error);
         alert(`Não foi possível concluir o agendamento. Tente novamente.\nDetalhes: ${error instanceof Error ? error.message : String(error)}`);
         setIsSubmitting(false);
     }
@@ -406,7 +407,7 @@ export default function App() {
               <header className="flex flex-col md:flex-row items-center text-center md:text-left mb-6">
                 <img src="https://i.imgur.com/M3Gt3OA.png" alt="Sandy's Pet Shop Logo" className="h-16 w-16 mr-0 md:mr-4 mb-2 md:mb-0"/>
                 <div>
-                    <h1 className="text-3xl font-bold text-blue-800">Sandy's Pet Shop</h1>
+                    <h1 className="font-cookie text-5xl text-blue-800 tracking-wide">Sandy's Pet Shop</h1>
                     <p className="text-gray-600">Agende o banho & tosa do seu pet</p>
                 </div>
               </header>
