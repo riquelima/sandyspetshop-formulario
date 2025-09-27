@@ -90,48 +90,64 @@ const Calendar: React.FC<{ selectedDate: Date; onDateChange: (date: Date) => voi
 };
 
 const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDate: Date; appointments: Appointment[]; onTimeSelect: (time: number) => void; selectedTime: number | null; }> = ({ selectedService, selectedDate, appointments, onTimeSelect, selectedTime }) => {
-    const slotCounts = useMemo(() => {
-        const counts: Record<number, number> = {};
-        WORKING_HOURS.forEach(hour => counts[hour] = 0);
-        const appointmentsForDay = appointments.filter(app => isSameDay(app.startTime, selectedDate));
+    // Calculate how many groomers are busy during each hour of the selected day.
+    const hourlyOccupation = useMemo(() => {
+        const occupation: Record<number, number> = {};
+        WORKING_HOURS.forEach(hour => occupation[hour] = 0);
+
+        const appointmentsOnSelectedDay = appointments.filter(app => isSameDay(app.startTime, selectedDate));
         
-        appointmentsForDay.forEach(app => {
+        appointmentsOnSelectedDay.forEach(app => {
             const startHour = app.startTime.getHours();
+            // Calculate duration in hours. An appointment from 9:00 to 11:00 has a 2-hour duration.
             const duration = Math.round((app.endTime.getTime() - app.startTime.getTime()) / (1000 * 60 * 60));
+
+            // Increment the occupation count for each hour the appointment spans.
+            // For a 2-hour appointment at 9:00, this will increment occupation for 9:00 and 10:00.
             for (let i = 0; i < duration; i++) {
                 const hour = startHour + i;
-                counts[hour] = (counts[hour] || 0) + 1;
+                // Use `(occupation[hour] || 0)` to safely handle hours outside working hours, like the lunch hour.
+                occupation[hour] = (occupation[hour] || 0) + 1;
             }
         });
-        return counts;
+        return occupation;
     }, [selectedDate, appointments]);
 
-    const isSlotAvailable = useCallback((hour: number): boolean => {
-        if (!selectedService) return false;
+    // Check if a specific time slot is available for booking.
+    const isSlotAvailable = useCallback((startHour: number): boolean => {
+        if (!selectedService) {
+            // Cannot determine availability without knowing the service duration.
+            return false;
+        }
+        
         const serviceDuration = SERVICES[selectedService].duration;
+        const endOfBusinessDay = 19; // Services can end at 19:00.
 
-        // Business day ends at 19:00. A 2-hour service starting at 17:00 should end at 19:00.
-        if (hour + serviceDuration > 19) {
+        // A service cannot be booked if it would end after the business day closes.
+        if (startHour + serviceDuration > endOfBusinessDay) {
             return false;
         }
 
-        // Check all slots required by the service duration.
+        // Check every hour that the new service would occupy.
         for (let i = 0; i < serviceDuration; i++) {
-            const checkHour = hour + i;
+            const hourToCheck = startHour + i;
             
-            // Cannot book over lunch break.
-            if (checkHour === LUNCH_HOUR) {
+            // Block booking over the lunch break (12:00-13:00).
+            if (hourToCheck === LUNCH_HOUR) {
                 return false;
             }
 
-            // Check capacity for the given hour.
-            if ((slotCounts[checkHour] || 0) >= MAX_CAPACITY_PER_SLOT) {
+            // Check if the number of busy groomers at this hour is already at maximum capacity.
+            const busyGroomers = hourlyOccupation[hourToCheck] || 0;
+            if (busyGroomers >= MAX_CAPACITY_PER_SLOT) {
+                // This hour is full, so the requested time slot is not available.
                 return false;
             }
         }
         
+        // If all hours required for the service have capacity, the slot is available.
         return true;
-    }, [selectedService, slotCounts]);
+    }, [selectedService, hourlyOccupation]);
 
     if (!selectedService) return <div className="text-center text-gray-500 p-4 bg-gray-100 rounded-lg">Por favor, selecione um serviço na etapa anterior.</div>;
     if (isWeekend(selectedDate) || isPastDate(selectedDate)) return <div className="text-center text-gray-500 p-4 bg-gray-100 rounded-lg">Não há agendamentos para fins de semana ou datas passadas.</div>;
