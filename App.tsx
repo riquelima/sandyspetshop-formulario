@@ -116,38 +116,43 @@ const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDa
     // Check if a specific time slot is available for booking.
     const isSlotAvailable = useCallback((startHour: number): boolean => {
         if (!selectedService) {
-            // Cannot determine availability without knowing the service duration.
             return false;
         }
-        
+
         const serviceDuration = SERVICES[selectedService].duration;
+        const endHour = startHour + serviceDuration;
         const endOfBusinessDay = 19; // Services can end at 19:00.
 
-        // A service cannot be booked if it would end after the business day closes.
-        if (startHour + serviceDuration > endOfBusinessDay) {
+        // Rule 1: The service must not end after the business day closes.
+        if (endHour > endOfBusinessDay) {
             return false;
         }
 
-        // Check every hour that the new service would occupy.
+        // Rule 2: The service must not overlap with the lunch break (12:00-13:00).
+        // A service is invalid if it starts before 13:00 and ends after 12:00.
+        // It is allowed to start at 13:00 or end at 12:00.
+        if (startHour < LUNCH_HOUR + 1 && endHour > LUNCH_HOUR) {
+            return false;
+        }
+
+        // Rule 3: Check capacity for every hour the service would occupy.
         for (let i = 0; i < serviceDuration; i++) {
             const hourToCheck = startHour + i;
             
-            // Block booking over the lunch break (12:00-13:00).
-            if (hourToCheck === LUNCH_HOUR) {
-                return false;
-            }
-
-            // Check if the number of busy groomers at this hour is already at maximum capacity.
+            // It's possible the loop checks an hour outside working hours (e.g., lunch hour)
+            // but the hourlyOccupation map only contains working hours.
+            // The `|| 0` handles this, as capacity for non-working hours is effectively infinite,
+            // but we've already blocked the lunch hour explicitly above.
             const busyGroomers = hourlyOccupation[hourToCheck] || 0;
             if (busyGroomers >= MAX_CAPACITY_PER_SLOT) {
-                // This hour is full, so the requested time slot is not available.
                 return false;
             }
         }
-        
-        // If all hours required for the service have capacity, the slot is available.
+
+        // If all rules pass, the slot is available.
         return true;
     }, [selectedService, hourlyOccupation]);
+
 
     if (!selectedService) return <div className="text-center text-gray-500 p-4 bg-gray-100 rounded-lg">Por favor, selecione um serviço na etapa anterior.</div>;
     if (isWeekend(selectedDate) || isPastDate(selectedDate)) return <div className="text-center text-gray-500 p-4 bg-gray-100 rounded-lg">Não há agendamentos para fins de semana ou datas passadas.</div>;
@@ -312,8 +317,24 @@ export default function App() {
         const { error: supabaseError } = await supabase.from('appointments').insert([supabasePayload]);
         if (supabaseError) throw supabaseError;
 
+        // The n8n webhook expects JSON, but the Google Apps Script webhook
+        // works more reliably with FormData when called from a browser to avoid CORS issues.
+        const sheetData = new FormData();
+        sheetData.append('id', submissionData.id);
+        sheetData.append('startTime', submissionData.startTime);
+        sheetData.append('petName', submissionData.petName);
+        sheetData.append('ownerName', submissionData.ownerName);
+        sheetData.append('whatsapp', submissionData.whatsapp);
+        sheetData.append('service', submissionData.service);
+        sheetData.append('weight', submissionData.weight);
+        sheetData.append('addons', submissionData.addons.join(', ')); // Convert array to comma-separated string
+        sheetData.append('price', String(submissionData.price));
+        sheetData.append('status', submissionData.status);
+
         await Promise.all([
-          fetch("https://script.google.com/macros/s/AKfycbw5TO-nb7hriuJoG4s2UQXANNFurLdsybOpOwuNXH7OeSDt3oFmHTgVHya7hUoO_hrDsQ/exec", { method: 'POST', mode: 'no-cors', body: JSON.stringify(submissionData) }),
+          // Use FormData for the Google Sheet request for better reliability
+          fetch("https://script.google.com/macros/s/AKfycbw5TO-nb7hriuJoG4s2UQXANNFurLdsybOpOwuNXH7OeSDt3oFmHTgVHya7hUoO_hrDsQ/exec", { method: 'POST', mode: 'no-cors', body: sheetData }),
+          // Keep the n8n webhook as JSON
           fetch("https://n8n.intelektus.tech/webhook/form-agendamento", { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(submissionData) })
         ]);
 
