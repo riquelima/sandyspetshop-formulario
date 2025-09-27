@@ -159,21 +159,38 @@ const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({ selectedService, select
 
     const serviceDuration = SERVICES[selectedService].duration;
 
-    const isSlotAvailable = (hour: number): boolean => {
-        if (serviceDuration === 1) {
-            return (slotCounts[hour] || 0) < MAX_CAPACITY_PER_SLOT;
+    const isSlotAvailable = useCallback((hour: number): boolean => {
+        // Rule 1: A service cannot end after the workday finishes (18:00)
+        if (hour + serviceDuration > 18) {
+            return false;
         }
-        if (serviceDuration === 2) {
-            if (hour === 11) { // Rule for 11:00 to 13:00, spanning lunch
+
+        // Rule 2: A service cannot span across the lunch break, with one exception
+        if (hour < LUNCH_HOUR && hour + serviceDuration > LUNCH_HOUR) {
+            // The only allowed case is a 2-hour service starting at 11:00
+            if (hour === 11 && serviceDuration === 2) {
+                // For this special case, just check the capacity of the starting slot (11:00)
                 return (slotCounts[11] || 0) < MAX_CAPACITY_PER_SLOT;
             }
-            const nextHour = hour + 1;
-            if (WORKING_HOURS.includes(nextHour)) {
-                return (slotCounts[hour] || 0) < MAX_CAPACITY_PER_SLOT && (slotCounts[nextHour] || 0) < MAX_CAPACITY_PER_SLOT;
+            // All other cases crossing lunch are invalid
+            return false;
+        }
+
+        // Rule 3: Check capacity for all hours the service would occupy
+        for (let i = 0; i < serviceDuration; i++) {
+            const checkHour = hour + i;
+            // We don't need to check lunch hour capacity as it's not a bookable slot
+            if (checkHour === LUNCH_HOUR) {
+                continue;
+            }
+            // If any required slot is at max capacity, the appointment is not possible
+            if ((slotCounts[checkHour] || 0) >= MAX_CAPACITY_PER_SLOT) {
+                return false;
             }
         }
-        return false;
-    };
+        
+        return true;
+    }, [selectedService, slotCounts]);
 
     return (
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
@@ -183,7 +200,7 @@ const TimeSlotPicker: React.FC<TimeSlotPickerProps> = ({ selectedService, select
                     <button
                         type="button"
                         key={hour}
-                        onClick={() => onTimeSelect(hour)}
+                        onClick={() => available && onTimeSelect(hour)}
                         disabled={!available}
                         className={`p-2 rounded-lg text-sm font-semibold transition-all ${
                             selectedTime === hour
@@ -298,7 +315,7 @@ export default function App() {
 
   const isFormValid = !!(formData.petName && formData.ownerName && formData.whatsapp && selectedService && selectedWeight && selectedTime !== null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFormValid) {
         alert("Por favor, preencha todos os campos e selecione serviço, peso e horário.");
@@ -321,21 +338,59 @@ export default function App() {
       startTime,
       endTime,
     };
-    
-    setAppointments(prev => [...prev, newAppointment]);
-    setIsModalOpen(true);
 
-    setTimeout(() => {
-      setIsModalOpen(false);
-      // Reset form
-      setFormData({ petName: '', ownerName: '', whatsapp: '' });
-      setSelectedService(null);
-      setSelectedWeight(null);
-      setSelectedAddons({});
-      setSelectedTime(null);
-      setTotalPrice(0);
-      setIsSubmitting(false);
-    }, 3000);
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw5TO-nb7hriuJoG4s2UQXANNFurLdsybOpOwuNXH7OeSDt3oFmHTgVHya7hUoO_hrDsQ/exec";
+    
+    const selectedAddonLabels = ADDON_SERVICES
+      .filter(addon => selectedAddons[addon.id])
+      .map(addon => addon.label);
+
+    const submissionData = {
+        id: newAppointment.id,
+        startTime: newAppointment.startTime.toISOString(),
+        petName: newAppointment.petName,
+        ownerName: newAppointment.ownerName,
+        whatsapp: newAppointment.whatsapp,
+        service: SERVICES[newAppointment.service].label,
+        weight: PET_WEIGHT_OPTIONS[selectedWeight!],
+        addons: selectedAddonLabels,
+        price: totalPrice,
+    };
+
+    try {
+        const response = await fetch(SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors', // Use no-cors for basic POST to Google Scripts to avoid CORS errors
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(submissionData),
+        });
+
+        // NOTE: With 'no-cors', we can't read the response. We optimistically assume success.
+        // For robust error handling, the Apps Script would need a more complex setup.
+        
+        // On successful submission to spreadsheet, update local state
+        setAppointments(prev => [...prev, newAppointment]);
+        setIsModalOpen(true);
+
+        setTimeout(() => {
+            setIsModalOpen(false);
+            // Reset form
+            setFormData({ petName: '', ownerName: '', whatsapp: '' });
+            setSelectedService(null);
+            setSelectedWeight(null);
+            setSelectedAddons({});
+            setSelectedTime(null);
+            setTotalPrice(0);
+            setIsSubmitting(false);
+        }, 3000);
+
+    } catch (error) {
+        console.error("Error submitting to Google Sheet:", error);
+        alert(`Não foi possível concluir o agendamento. Tente novamente.\nDetalhes: ${error instanceof Error ? error.message : String(error)}`);
+        setIsSubmitting(false);
+    }
   };
 
   return (
