@@ -292,7 +292,7 @@ export default function App() {
     const submissionData = {
         id: newAppointment.id, startTime: newAppointment.startTime.toISOString(), petName: newAppointment.petName, ownerName: newAppointment.ownerName,
         whatsapp: newAppointment.whatsapp, service: SERVICES[newAppointment.service].label, weight: PET_WEIGHT_OPTIONS[selectedWeight!],
-        addons: ADDON_SERVICES.filter(addon => selectedAddons[addon.id]).map(addon => addon.label), price: totalPrice,
+        addons: ADDON_SERVICES.filter(addon => selectedAddons[addon.id]).map(addon => addon.label), price: totalPrice, status: 'AGENDADO'
     };
 
     const supabasePayload = {
@@ -305,6 +305,7 @@ export default function App() {
       weight: PET_WEIGHT_OPTIONS[selectedWeight!],
       addons: ADDON_SERVICES.filter(addon => selectedAddons[addon.id]).map(addon => addon.label),
       price: totalPrice,
+      status: 'AGENDADO'
     };
     
     try {
