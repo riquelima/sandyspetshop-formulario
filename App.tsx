@@ -36,6 +36,8 @@ const PawIcon = () => <img src="https://static.thenounproject.com/png/pet-icon-6
 const UserIcon = () => <img src="https://static.thenounproject.com/png/profile-icon-709597-512.png" alt="User Icon" className="h-5 w-5 opacity-60" />;
 const WhatsAppIcon = () => <img src="https://static.thenounproject.com/png/whatsapp-icon-6592278-512.png" alt="WhatsApp Icon" className="h-5 w-5 opacity-60" />;
 const SuccessIcon = () => <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-green-500 mx-auto mb-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>;
+const BreedIcon = () => <img src="https://static.thenounproject.com/png/pet-icon-7326432-512.png" alt="Breed Icon" className="h-5 w-5 opacity-60" />;
+const AddressIcon = () => <img src="https://static.thenounproject.com/png/location-icon-7979305-512.png" alt="Address Icon" className="h-5 w-5 opacity-60" />;
 
 
 // --- UI COMPONENTS ---
@@ -75,8 +77,8 @@ const Calendar: React.FC<{ selectedDate: Date; onDateChange: (date: Date) => voi
           let btnClass = "w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300";
           if (isDisabled) btnClass += " text-gray-300 cursor-not-allowed";
           else {
-            if (isSelected) btnClass += " bg-blue-600 text-white font-bold shadow-lg transform scale-110";
-            else btnClass += " hover:bg-blue-100";
+            if (isSelected) btnClass += " bg-pink-600 text-white font-bold shadow-lg transform scale-110";
+            else btnClass += " hover:bg-pink-100";
           }
           return (
             <button type="button" key={i} onClick={() => !isDisabled && onDateChange(d)} disabled={isDisabled} className={btnClass}>
@@ -164,9 +166,9 @@ const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDa
                 return (
                     <button type="button" key={hour} onClick={() => available && onTimeSelect(hour)} disabled={!available}
                         className={`p-3 rounded-lg text-sm font-semibold transition-all duration-200 transform ${
-                            selectedTime === hour ? 'bg-blue-600 text-white shadow-lg scale-105'
+                            selectedTime === hour ? 'bg-pink-600 text-white shadow-lg scale-105'
                             : !available ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            : 'bg-white hover:bg-blue-100 hover:scale-105 text-gray-800 shadow-sm'
+                            : 'bg-white hover:bg-pink-100 hover:scale-105 text-gray-800 shadow-sm'
                         }`}
                     >
                         {`${String(hour).padStart(2, '0')}:00`}
@@ -181,7 +183,7 @@ const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDa
 export default function App() {
   const [step, setStep] = useState(1);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [formData, setFormData] = useState({ petName: '', ownerName: '', whatsapp: '' });
+  const [formData, setFormData] = useState({ petName: '', ownerName: '', whatsapp: '', petBreed: '', ownerAddress: '' });
   const [selectedService, setSelectedService] = useState<ServiceType | null>(null);
   const [selectedWeight, setSelectedWeight] = useState<PetWeight | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<Record<string, boolean>>({});
@@ -307,7 +309,9 @@ export default function App() {
         date: formattedDate,
         time: formattedTime,
         petName: newAppointment.petName,
+        petBreed: formData.petBreed,
         ownerName: newAppointment.ownerName,
+        ownerAddress: formData.ownerAddress,
         whatsapp: newAppointment.whatsapp,
         service: SERVICES[newAppointment.service].label,
         weight: PET_WEIGHT_OPTIONS[selectedWeight!],
@@ -320,7 +324,9 @@ export default function App() {
       start_time: startTime.toISOString(),
       end_time: endTime.toISOString(),
       pet_name: formData.petName,
+      pet_breed: formData.petBreed,
       owner_name: formData.ownerName,
+      owner_address: formData.ownerAddress,
       whatsapp: formData.whatsapp,
       service: SERVICES[selectedService].label,
       weight: PET_WEIGHT_OPTIONS[selectedWeight!],
@@ -334,7 +340,7 @@ export default function App() {
         if (supabaseError) throw supabaseError;
 
         const webhooks = [
-          fetch("https://script.google.com/macros/s/AKfycbytIYTakaMuNLotJaHTS18yH6bjyFzKnpcr1IUsjqEgHsfS6VsVNMEre3wJjxGq1ede4g/exec", {
+          fetch("https://script.google.com/macros/s/AKfycbxlkuT4NWQzrK1zZPelzdS_gKAav5elpf3m4raQTm7tVPxI9_A-N1wU0UGkesM0MKErpw/exec", {
               method: 'POST',
               mode: 'no-cors',
               headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -353,7 +359,7 @@ export default function App() {
         setIsModalOpen(true);
         setTimeout(() => {
             setIsModalOpen(false);
-            setFormData({ petName: '', ownerName: '', whatsapp: '' });
+            setFormData({ petName: '', ownerName: '', whatsapp: '', petBreed: '', ownerAddress: '' });
             setSelectedService(null); setSelectedWeight(null); setSelectedAddons({}); setSelectedTime(null); setTotalPrice(0); setIsSubmitting(false);
             changeStep(1);
         }, 3000);
@@ -376,7 +382,7 @@ export default function App() {
     }
   };
 
-  const isStep1Valid = formData.petName && formData.ownerName && formData.whatsapp.length > 13;
+  const isStep1Valid = formData.petName && formData.ownerName && formData.whatsapp.length > 13 && formData.petBreed && formData.ownerAddress;
   const isStep2Valid = selectedService && selectedWeight;
   const isStep3Valid = selectedTime !== null;
 
@@ -384,16 +390,16 @@ export default function App() {
     <div className="min-h-screen flex flex-col items-center justify-center p-4">
       <header className="text-center mb-6">
           <img src="https://i.imgur.com/M3Gt3OA.png" alt="Sandy's Pet Shop Logo" className="h-20 w-20 mx-auto mb-2"/>
-          <h1 className="font-brand text-5xl text-blue-800">Sandy's Pet Shop</h1>
+          <h1 className="font-brand text-5xl text-pink-800">Sandy's Pet Shop</h1>
           <p className="text-gray-600 text-lg">Agendamento Online</p>
       </header>
 
-      <main className="w-full max-w-2xl bg-white rounded-2xl shadow-xl overflow-hidden">
+      <main className="w-full max-w-2xl bg-rose-50 rounded-2xl shadow-xl overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex justify-between items-center text-sm font-semibold text-gray-500">
                 {['Dados', 'Serviços', 'Horário', 'Resumo'].map((name, index) => (
-                    <div key={name} className={`flex items-center gap-2 ${step > index + 1 ? 'text-blue-600' : ''} ${step === index + 1 ? 'text-blue-600 font-bold' : ''}`}>
-                        <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${step >= index + 1 ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
+                    <div key={name} className={`flex items-center gap-2 ${step > index + 1 ? 'text-pink-600' : ''} ${step === index + 1 ? 'text-pink-600 font-bold' : ''}`}>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${step >= index + 1 ? 'bg-pink-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
                             {step > index + 1 ? '✓' : index + 1}
                         </div>
                         <span className="hidden sm:inline">{name}</span>
@@ -408,15 +414,23 @@ export default function App() {
               <h2 className="text-2xl font-bold text-gray-800">Informações do Pet e Dono</h2>
               <div>
                   <label htmlFor="petName" className="block text-sm font-medium text-gray-700">Nome do Pet</label>
-                  <div className="relative mt-1"><span className="absolute inset-y-0 left-0 flex items-center pl-3"><PawIcon/></span><input type="text" name="petName" id="petName" value={formData.petName} onChange={handleInputChange} required className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"/></div>
+                  <div className="relative mt-1"><span className="absolute inset-y-0 left-0 flex items-center pl-3"><PawIcon/></span><input type="text" name="petName" id="petName" value={formData.petName} onChange={handleInputChange} required className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 text-gray-900"/></div>
+              </div>
+              <div>
+                  <label htmlFor="petBreed" className="block text-sm font-medium text-gray-700">Raça do Pet</label>
+                  <div className="relative mt-1"><span className="absolute inset-y-0 left-0 flex items-center pl-3"><BreedIcon/></span><input type="text" name="petBreed" id="petBreed" value={formData.petBreed} onChange={handleInputChange} required className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 text-gray-900"/></div>
               </div>
               <div>
                   <label htmlFor="ownerName" className="block text-sm font-medium text-gray-700">Seu Nome</label>
-                  <div className="relative mt-1"><span className="absolute inset-y-0 left-0 flex items-center pl-3"><UserIcon/></span><input type="text" name="ownerName" id="ownerName" value={formData.ownerName} onChange={handleInputChange} required className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"/></div>
+                  <div className="relative mt-1"><span className="absolute inset-y-0 left-0 flex items-center pl-3"><UserIcon/></span><input type="text" name="ownerName" id="ownerName" value={formData.ownerName} onChange={handleInputChange} required className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 text-gray-900"/></div>
+              </div>
+              <div>
+                  <label htmlFor="ownerAddress" className="block text-sm font-medium text-gray-700">Seu Endereço</label>
+                  <div className="relative mt-1"><span className="absolute inset-y-0 left-0 flex items-center pl-3"><AddressIcon/></span><input type="text" name="ownerAddress" id="ownerAddress" value={formData.ownerAddress} onChange={handleInputChange} required className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 text-gray-900"/></div>
               </div>
               <div>
                   <label htmlFor="whatsapp" className="block text-sm font-medium text-gray-700">WhatsApp</label>
-                  <div className="relative mt-1"><span className="absolute inset-y-0 left-0 flex items-center pl-3"><WhatsAppIcon/></span><input type="tel" name="whatsapp" id="whatsapp" value={formData.whatsapp} onChange={handleInputChange} required placeholder="(XX) XXXXX-XXXX" maxLength={15} className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"/></div>
+                  <div className="relative mt-1"><span className="absolute inset-y-0 left-0 flex items-center pl-3"><WhatsAppIcon/></span><input type="tel" name="whatsapp" id="whatsapp" value={formData.whatsapp} onChange={handleInputChange} required placeholder="(XX) XXXXX-XXXX" maxLength={15} className="block w-full pl-10 pr-3 py-2.5 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 text-gray-900"/></div>
               </div>
             </div>
           )}
@@ -428,7 +442,7 @@ export default function App() {
                     <h3 className="text-md font-semibold text-gray-700 mb-2">1. Serviço Principal</h3>
                     <div className="grid grid-cols-2 gap-4">
                         {(Object.keys(SERVICES) as ServiceType[]).map(key => (
-                            <button type="button" key={key} onClick={() => setSelectedService(key)} className={`p-4 rounded-xl text-center font-semibold transition-all border-2 flex flex-col items-center justify-center h-full ${selectedService === key ? 'bg-blue-600 text-white border-blue-600 shadow-lg' : 'bg-white hover:bg-blue-50 border-gray-200'}`}>
+                            <button type="button" key={key} onClick={() => setSelectedService(key)} className={`p-4 rounded-xl text-center font-semibold transition-all border-2 flex flex-col items-center justify-center h-full ${selectedService === key ? 'bg-pink-600 text-white border-pink-600 shadow-lg' : 'bg-white hover:bg-pink-50 border-gray-200'}`}>
                                 <span className="text-lg">{SERVICES[key].label}</span>
                             </button>
                         ))}
@@ -436,7 +450,7 @@ export default function App() {
                 </div>
                 <div>
                     <label htmlFor="petWeight" className="block text-md font-semibold text-gray-700 mb-2">2. Peso do Pet</label>
-                    <select id="petWeight" value={selectedWeight || ''} onChange={handleWeightChange} required className="block w-full py-3 px-3 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900">
+                    <select id="petWeight" value={selectedWeight || ''} onChange={handleWeightChange} required className="block w-full py-3 px-3 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 text-gray-900">
                         <option value="" disabled>Selecione o peso</option>
                         {(Object.keys(PET_WEIGHT_OPTIONS) as PetWeight[]).map(key => (<option key={key} value={key}>{PET_WEIGHT_OPTIONS[key]}</option>))}
                     </select>
@@ -447,8 +461,8 @@ export default function App() {
                         {ADDON_SERVICES.map(addon => {
                             const isDisabled = !selectedWeight || !selectedService || addon.excludesWeight?.includes(selectedWeight!) || (addon.requiresWeight && !addon.requiresWeight.includes(selectedWeight!)) || (addon.requiresService && addon.requiresService !== selectedService);
                             return (
-                                <label key={addon.id} className={`flex items-center p-3 rounded-lg border-2 transition-all ${isDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'cursor-pointer hover:bg-blue-50'} ${selectedAddons[addon.id] ? 'border-blue-500 bg-blue-50' : 'border-gray-200'}`}>
-                                    <input type="checkbox" onChange={() => handleAddonToggle(addon.id)} checked={!!selectedAddons[addon.id]} disabled={isDisabled} className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                                <label key={addon.id} className={`flex items-center p-3 rounded-lg border-2 transition-all ${isDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'cursor-pointer hover:bg-pink-50'} ${selectedAddons[addon.id] ? 'border-pink-500 bg-pink-50' : 'border-gray-200'}`}>
+                                    <input type="checkbox" onChange={() => handleAddonToggle(addon.id)} checked={!!selectedAddons[addon.id]} disabled={isDisabled} className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500" />
                                     <span className="ml-2.5">{addon.label}</span>
                                 </label>
                             );
@@ -477,7 +491,9 @@ export default function App() {
               <h2 className="text-2xl font-bold text-gray-800 text-center">Confirme seu Agendamento</h2>
               <div className="p-4 bg-gray-50 rounded-lg space-y-2 text-gray-700">
                 <p><strong>Pet:</strong> {formData.petName}</p>
+                <p><strong>Raça:</strong> {formData.petBreed}</p>
                 <p><strong>Responsável:</strong> {formData.ownerName}</p>
+                <p><strong>Endereço:</strong> {formData.ownerAddress}</p>
                 <p><strong>Data:</strong> {selectedDate.toLocaleDateString('pt-BR')}</p>
                 <p><strong>Horário:</strong> {selectedTime}:00</p>
                 <p><strong>Serviço:</strong> {selectedService && SERVICES[selectedService].label}</p>
@@ -488,7 +504,7 @@ export default function App() {
               </div>
               <div className="mt-4 pt-4 border-t border-gray-200 text-center">
                   <h4 className="text-lg font-medium text-gray-600">Valor Total Estimado</h4>
-                  <p className="text-4xl font-bold text-blue-800">R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
+                  <p className="text-4xl font-bold text-pink-800">R$ {totalPrice.toFixed(2).replace('.', ',')}</p>
               </div>
             </div>
           )}
@@ -498,7 +514,7 @@ export default function App() {
               <button type="button" onClick={() => changeStep(step - 1)} className="bg-gray-200 text-gray-800 font-bold py-2.5 px-5 rounded-lg hover:bg-gray-300 transition-colors">Voltar</button>
             )}
             <div className="flex-grow"></div>
-            {step < 4 && <button type="button" onClick={() => changeStep(step + 1)} disabled={(step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid) || (step === 3 && !isStep3Valid)} className="w-full md:w-auto bg-blue-600 text-white font-bold py-2.5 px-5 rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed ml-auto">Avançar</button>}
+            {step < 4 && <button type="button" onClick={() => changeStep(step + 1)} disabled={(step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid) || (step === 3 && !isStep3Valid)} className="w-full md:w-auto bg-pink-600 text-white font-bold py-2.5 px-5 rounded-lg hover:bg-pink-700 transition-colors disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed ml-auto">Avançar</button>}
             {step === 4 && <button type="submit" disabled={isSubmitting} className="w-full md:w-auto bg-green-500 text-white font-bold py-2.5 px-5 rounded-lg hover:bg-green-600 transition-colors disabled:bg-gray-300 disabled:text-gray-500">{isSubmitting ? 'Agendando...' : 'Confirmar Agendamento'}</button>}
           </div>
 
@@ -506,10 +522,10 @@ export default function App() {
       </main>
 
       {isModalOpen && (
-        <div className="fixed inset-0 bg-blue-600 bg-opacity-90 flex items-center justify-center z-50 animate-fadeIn p-4">
+        <div className="fixed inset-0 bg-pink-600 bg-opacity-90 flex items-center justify-center z-50 animate-fadeIn p-4">
             <div className="text-center bg-white p-8 rounded-2xl shadow-2xl max-w-sm mx-auto animate-scaleIn">
                 <SuccessIcon />
-                <h2 className="text-3xl font-bold text-blue-800 mb-2">Agendado com Sucesso!</h2>
+                <h2 className="text-3xl font-bold text-pink-800 mb-2">Agendado com Sucesso!</h2>
                 <p className="text-gray-600">Recebemos seu pedido de agendamento. Você receberá uma confirmação em breve no WhatsApp. Obrigado!</p>
             </div>
         </div>
