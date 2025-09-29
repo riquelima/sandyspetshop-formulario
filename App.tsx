@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { Appointment, ServiceType, PetWeight } from './types';
-import { SERVICES, WORKING_HOURS, MAX_CAPACITY_PER_SLOT, LUNCH_HOUR, PET_WEIGHT_OPTIONS, BASE_PRICES, ADDON_SERVICES, AddonService } from './constants';
+import { SERVICES, WORKING_HOURS, MAX_CAPACITY_PER_SLOT, LUNCH_HOUR, PET_WEIGHT_OPTIONS, BASE_PRICES, ADDON_SERVICES, AddonService, VISIT_WORKING_HOURS } from './constants';
 import { supabase } from './supabaseClient';
 
 
@@ -91,11 +92,11 @@ const Calendar: React.FC<{ selectedDate: Date; onDateChange: (date: Date) => voi
   );
 };
 
-const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDate: Date; appointments: Appointment[]; onTimeSelect: (time: number) => void; selectedTime: number | null; }> = ({ selectedService, selectedDate, appointments, onTimeSelect, selectedTime }) => {
+const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDate: Date; appointments: Appointment[]; onTimeSelect: (time: number) => void; selectedTime: number | null; workingHours: number[]; }> = ({ selectedService, selectedDate, appointments, onTimeSelect, selectedTime, workingHours }) => {
     // Calculate how many groomers are busy during each hour of the selected day.
     const hourlyOccupation = useMemo(() => {
         const occupation: Record<number, number> = {};
-        WORKING_HOURS.forEach(hour => occupation[hour] = 0);
+        workingHours.forEach(hour => occupation[hour] = 0);
 
         const appointmentsOnSelectedDay = appointments.filter(app => isSameDay(app.startTime, selectedDate));
         
@@ -113,7 +114,7 @@ const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDa
             }
         });
         return occupation;
-    }, [selectedDate, appointments]);
+    }, [selectedDate, appointments, workingHours]);
 
     // Check if a specific time slot is available for booking.
     const isSlotAvailable = useCallback((startHour: number): boolean => {
@@ -130,21 +131,14 @@ const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDa
             return false;
         }
 
-        // Rule 2: The service must not overlap with the lunch break (12:00-13:00).
-        // A service is invalid if it starts before 13:00 and ends after 12:00.
-        // It is allowed to start at 13:00 or end at 12:00.
-        if (startHour < LUNCH_HOUR + 1 && endHour > LUNCH_HOUR) {
+        // Rule 2: The service must not overlap with the lunch break (12:00-13:00), unless visits are allowed during lunch.
+        if (startHour < LUNCH_HOUR + 1 && endHour > LUNCH_HOUR && !workingHours.includes(LUNCH_HOUR)) {
             return false;
         }
 
         // Rule 3: Check capacity for every hour the service would occupy.
         for (let i = 0; i < serviceDuration; i++) {
             const hourToCheck = startHour + i;
-            
-            // It's possible the loop checks an hour outside working hours (e.g., lunch hour)
-            // but the hourlyOccupation map only contains working hours.
-            // The `|| 0` handles this, as capacity for non-working hours is effectively infinite,
-            // but we've already blocked the lunch hour explicitly above.
             const busyGroomers = hourlyOccupation[hourToCheck] || 0;
             if (busyGroomers >= MAX_CAPACITY_PER_SLOT) {
                 return false;
@@ -153,7 +147,7 @@ const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDa
 
         // If all rules pass, the slot is available.
         return true;
-    }, [selectedService, hourlyOccupation]);
+    }, [selectedService, hourlyOccupation, workingHours]);
 
 
     if (!selectedService) return <div className="text-center text-gray-500 p-4 bg-gray-100 rounded-lg">Por favor, selecione um serviço na etapa anterior.</div>;
@@ -161,7 +155,7 @@ const TimeSlotPicker: React.FC<{ selectedService: ServiceType | null; selectedDa
 
     return (
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-            {WORKING_HOURS.map(hour => {
+            {workingHours.map(hour => {
                 const available = isSlotAvailable(hour);
                 return (
                     <button type="button" key={hour} onClick={() => available && onTimeSelect(hour)} disabled={!available}
@@ -185,6 +179,7 @@ export default function App() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [formData, setFormData] = useState({ petName: '', ownerName: '', whatsapp: '', petBreed: '', ownerAddress: '' });
   const [selectedService, setSelectedService] = useState<ServiceType | null>(null);
+  const [serviceStepView, setServiceStepView] = useState('main'); // 'main' or 'visit'
   const [selectedWeight, setSelectedWeight] = useState<PetWeight | null>(null);
   const [selectedAddons, setSelectedAddons] = useState<Record<string, boolean>>({});
   const [totalPrice, setTotalPrice] = useState(0);
@@ -193,6 +188,11 @@ export default function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  
+  const isVisitService = useMemo(() => 
+    selectedService === ServiceType.VISIT_DAYCARE || selectedService === ServiceType.VISIT_HOTEL,
+    [selectedService]
+  );
 
   useEffect(() => {
     const fetchAppointments = async () => {
@@ -237,7 +237,15 @@ export default function App() {
   useEffect(() => { setSelectedTime(null); }, [selectedDate, selectedService]);
   
   useEffect(() => {
-    if (!selectedService || !selectedWeight) { setTotalPrice(0); return; }
+    if (!selectedService) { setTotalPrice(0); return; }
+    
+    if (isVisitService) {
+        setTotalPrice(0);
+        return;
+    }
+    
+    if (!selectedWeight) { setTotalPrice(0); return; }
+
     const basePrice = BASE_PRICES[selectedWeight][selectedService];
     let addonsPrice = 0;
     Object.keys(selectedAddons).forEach(addonId => {
@@ -247,7 +255,7 @@ export default function App() {
         }
     });
     setTotalPrice(basePrice + addonsPrice);
-  }, [selectedService, selectedWeight, selectedAddons]);
+  }, [selectedService, selectedWeight, selectedAddons, isVisitService]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -303,22 +311,38 @@ export default function App() {
     const minute = String(startTime.getMinutes()).padStart(2, '0');
     const formattedTime = `${hour}:${minute}`;
 
-    const submissionData = {
-        id: newAppointment.id,
-        status: 'AGENDADO',
-        date: formattedDate,
-        time: formattedTime,
-        petName: newAppointment.petName,
-        petBreed: formData.petBreed,
-        ownerName: newAppointment.ownerName,
-        ownerAddress: formData.ownerAddress,
-        whatsapp: newAppointment.whatsapp,
-        service: SERVICES[newAppointment.service].label,
-        weight: PET_WEIGHT_OPTIONS[selectedWeight!],
-        addons: ADDON_SERVICES.filter(addon => selectedAddons[addon.id]).map(addon => addon.label).join(', '),
-        price: totalPrice,
-        start_time_iso: startTime.toISOString(),
-    };
+    let submissionData = {};
+
+    if (isVisitService) {
+        const serviceLabel = SERVICES[newAppointment.service].label;
+        submissionData = {
+            'Status': 'AGENDADO',
+            'Data': formattedDate,
+            'Hora': formattedTime,
+            'Nome Pet': newAppointment.petName,
+            'Raça Pet': formData.petBreed,
+            'Nome Responsável': newAppointment.ownerName,
+            'Telefone': newAppointment.whatsapp,
+            'Tipo Visita': serviceLabel,
+            // Adicionado para roteamento no Apps Script
+            'ServiçoPrincipal': serviceLabel,
+        };
+    } else {
+        submissionData = {
+            'Status': 'AGENDADO',
+            'Data': formattedDate,
+            'Hora': formattedTime,
+            'Nome Responsável': newAppointment.ownerName,
+            'Nome Pet': newAppointment.petName,
+            'Raça': formData.petBreed,
+            'Whatsapp': newAppointment.whatsapp,
+            'ServiçoPrincipal': SERVICES[newAppointment.service].label,
+            'PesoPet': selectedWeight ? PET_WEIGHT_OPTIONS[selectedWeight] : 'N/A',
+            'ServicosAdicionais': ADDON_SERVICES.filter(addon => selectedAddons[addon.id]).map(addon => addon.label).join(', '),
+            'Endereço': formData.ownerAddress,
+            'ValorTotal': totalPrice,
+        };
+    }
 
     const supabasePayload = {
       start_time: startTime.toISOString(),
@@ -329,8 +353,8 @@ export default function App() {
       owner_address: formData.ownerAddress,
       whatsapp: formData.whatsapp,
       service: SERVICES[selectedService].label,
-      weight: PET_WEIGHT_OPTIONS[selectedWeight!],
-      addons: ADDON_SERVICES.filter(addon => selectedAddons[addon.id]).map(addon => addon.label),
+      weight: isVisitService ? 'N/A' : (selectedWeight ? PET_WEIGHT_OPTIONS[selectedWeight] : 'N/A'),
+      addons: isVisitService ? [] : ADDON_SERVICES.filter(addon => selectedAddons[addon.id]).map(addon => addon.label),
       price: totalPrice,
       status: 'AGENDADO'
     };
@@ -361,6 +385,7 @@ export default function App() {
             setIsModalOpen(false);
             setFormData({ petName: '', ownerName: '', whatsapp: '', petBreed: '', ownerAddress: '' });
             setSelectedService(null); setSelectedWeight(null); setSelectedAddons({}); setSelectedTime(null); setTotalPrice(0); setIsSubmitting(false);
+            setServiceStepView('main');
             changeStep(1);
         }, 3000);
     } catch (error: any) {
@@ -383,7 +408,7 @@ export default function App() {
   };
 
   const isStep1Valid = formData.petName && formData.ownerName && formData.whatsapp.length > 13 && formData.petBreed && formData.ownerAddress;
-  const isStep2Valid = selectedService && selectedWeight;
+  const isStep2Valid = selectedService && (isVisitService || selectedWeight);
   const isStep3Valid = selectedTime !== null;
 
   return (
@@ -440,35 +465,58 @@ export default function App() {
                 <h2 className="text-2xl font-bold text-gray-800">Escolha os Serviços</h2>
                 <div>
                     <h3 className="text-md font-semibold text-gray-700 mb-2">1. Serviço Principal</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                        {(Object.keys(SERVICES) as ServiceType[]).map(key => (
-                            <button type="button" key={key} onClick={() => setSelectedService(key)} className={`p-4 rounded-xl text-center font-semibold transition-all border-2 flex flex-col items-center justify-center h-full ${selectedService === key ? 'bg-pink-600 text-white border-pink-600 shadow-lg' : 'bg-white hover:bg-pink-50 border-gray-200'}`}>
-                                <span className="text-lg">{SERVICES[key].label}</span>
+                    {serviceStepView === 'main' && (
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <button type="button" onClick={() => setSelectedService(ServiceType.BATH)} className={`p-4 rounded-xl text-center font-semibold transition-all border-2 flex flex-col items-center justify-center h-full ${selectedService === ServiceType.BATH ? 'bg-pink-600 text-white border-pink-600 shadow-lg' : 'bg-white hover:bg-pink-50 border-gray-200'}`}>
+                                <span className="text-lg">{SERVICES[ServiceType.BATH].label}</span>
                             </button>
-                        ))}
-                    </div>
+                             <button type="button" onClick={() => setSelectedService(ServiceType.BATH_AND_GROOMING)} className={`p-4 rounded-xl text-center font-semibold transition-all border-2 flex flex-col items-center justify-center h-full ${selectedService === ServiceType.BATH_AND_GROOMING ? 'bg-pink-600 text-white border-pink-600 shadow-lg' : 'bg-white hover:bg-pink-50 border-gray-200'}`}>
+                                <span className="text-lg">{SERVICES[ServiceType.BATH_AND_GROOMING].label}</span>
+                            </button>
+                            <button type="button" onClick={() => { setServiceStepView('visit'); setSelectedService(null); }} className={`p-4 rounded-xl text-center font-semibold transition-all border-2 flex flex-col items-center justify-center h-full bg-white hover:bg-pink-50 border-gray-200`}>
+                                <span className="text-lg">Visita</span>
+                            </button>
+                        </div>
+                    )}
+                    {serviceStepView === 'visit' && (
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <button type="button" onClick={() => setSelectedService(ServiceType.VISIT_DAYCARE)} className={`p-4 rounded-xl text-center font-semibold transition-all border-2 flex flex-col items-center justify-center h-full ${selectedService === ServiceType.VISIT_DAYCARE ? 'bg-pink-600 text-white border-pink-600 shadow-lg' : 'bg-white hover:bg-pink-50 border-gray-200'}`}>
+                                    <span className="text-lg">Creche</span>
+                                </button>
+                                <button type="button" onClick={() => setSelectedService(ServiceType.VISIT_HOTEL)} className={`p-4 rounded-xl text-center font-semibold transition-all border-2 flex flex-col items-center justify-center h-full ${selectedService === ServiceType.VISIT_HOTEL ? 'bg-pink-600 text-white border-pink-600 shadow-lg' : 'bg-white hover:bg-pink-50 border-gray-200'}`}>
+                                    <span className="text-lg">Hotel</span>
+                                </button>
+                            </div>
+                            <button type="button" onClick={() => { setServiceStepView('main'); setSelectedService(null); }} className="text-sm text-pink-600 hover:underline">← Voltar para serviços principais</button>
+                        </div>
+                    )}
                 </div>
-                <div>
-                    <label htmlFor="petWeight" className="block text-md font-semibold text-gray-700 mb-2">2. Peso do Pet</label>
-                    <select id="petWeight" value={selectedWeight || ''} onChange={handleWeightChange} required className="block w-full py-3 px-3 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 text-gray-900">
-                        <option value="" disabled>Selecione o peso</option>
-                        {(Object.keys(PET_WEIGHT_OPTIONS) as PetWeight[]).map(key => (<option key={key} value={key}>{PET_WEIGHT_OPTIONS[key]}</option>))}
-                    </select>
-                </div>
-                <div>
-                     <h3 className="text-md font-semibold text-gray-700 mb-2">3. Serviços Adicionais (Opcional)</h3>
-                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                        {ADDON_SERVICES.map(addon => {
-                            const isDisabled = !selectedWeight || !selectedService || addon.excludesWeight?.includes(selectedWeight!) || (addon.requiresWeight && !addon.requiresWeight.includes(selectedWeight!)) || (addon.requiresService && addon.requiresService !== selectedService);
-                            return (
-                                <label key={addon.id} className={`flex items-center p-3 rounded-lg border-2 transition-all ${isDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'cursor-pointer hover:bg-pink-50'} ${selectedAddons[addon.id] ? 'border-pink-500 bg-pink-50' : 'border-gray-200'}`}>
-                                    <input type="checkbox" onChange={() => handleAddonToggle(addon.id)} checked={!!selectedAddons[addon.id]} disabled={isDisabled} className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500" />
-                                    <span className="ml-2.5">{addon.label}</span>
-                                </label>
-                            );
-                        })}
-                     </div>
-                 </div>
+                {serviceStepView === 'main' && (
+                    <>
+                        <div>
+                            <label htmlFor="petWeight" className="block text-md font-semibold text-gray-700 mb-2">2. Peso do Pet</label>
+                            <select id="petWeight" value={selectedWeight || ''} onChange={handleWeightChange} required className="block w-full py-3 px-3 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-pink-500 focus:border-pink-500 text-gray-900">
+                                <option value="" disabled>Selecione o peso</option>
+                                {(Object.keys(PET_WEIGHT_OPTIONS) as PetWeight[]).map(key => (<option key={key} value={key}>{PET_WEIGHT_OPTIONS[key]}</option>))}
+                            </select>
+                        </div>
+                        <div>
+                            <h3 className="text-md font-semibold text-gray-700 mb-2">3. Serviços Adicionais (Opcional)</h3>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+                                {ADDON_SERVICES.map(addon => {
+                                    const isDisabled = !selectedWeight || !selectedService || addon.excludesWeight?.includes(selectedWeight!) || (addon.requiresWeight && !addon.requiresWeight.includes(selectedWeight!)) || (addon.requiresService && addon.requiresService !== selectedService);
+                                    return (
+                                        <label key={addon.id} className={`flex items-center p-3 rounded-lg border-2 transition-all ${isDisabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'cursor-pointer hover:bg-pink-50'} ${selectedAddons[addon.id] ? 'border-pink-500 bg-pink-50' : 'border-gray-200'}`}>
+                                            <input type="checkbox" onChange={() => handleAddonToggle(addon.id)} checked={!!selectedAddons[addon.id]} disabled={isDisabled} className="h-4 w-4 rounded border-gray-300 text-pink-600 focus:ring-pink-500" />
+                                            <span className="ml-2.5">{addon.label}</span>
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </>
+                )}
             </div>
           )}
 
@@ -481,7 +529,14 @@ export default function App() {
                 </div>
                 <div>
                     <h3 className="text-md font-semibold text-gray-700 mb-2 text-center">Horários Disponíveis</h3>
-                    <TimeSlotPicker selectedDate={selectedDate} selectedService={selectedService} appointments={appointments} onTimeSelect={setSelectedTime} selectedTime={selectedTime}/>
+                    <TimeSlotPicker 
+                        selectedDate={selectedDate} 
+                        selectedService={selectedService} 
+                        appointments={appointments} 
+                        onTimeSelect={setSelectedTime} 
+                        selectedTime={selectedTime}
+                        workingHours={isVisitService ? VISIT_WORKING_HOURS : WORKING_HOURS}
+                    />
                 </div>
             </div>
           )}
@@ -497,8 +552,10 @@ export default function App() {
                 <p><strong>Data:</strong> {selectedDate.toLocaleDateString('pt-BR')}</p>
                 <p><strong>Horário:</strong> {selectedTime}:00</p>
                 <p><strong>Serviço:</strong> {selectedService && SERVICES[selectedService].label}</p>
-                <p><strong>Peso:</strong> {selectedWeight && PET_WEIGHT_OPTIONS[selectedWeight]}</p>
-                {ADDON_SERVICES.filter(a => selectedAddons[a.id]).length > 0 && (
+                {!isVisitService && selectedWeight && (
+                    <p><strong>Peso:</strong> {PET_WEIGHT_OPTIONS[selectedWeight]}</p>
+                )}
+                {!isVisitService && ADDON_SERVICES.filter(a => selectedAddons[a.id]).length > 0 && (
                   <p><strong>Adicionais:</strong> {ADDON_SERVICES.filter(a => selectedAddons[a.id]).map(a => a.label).join(', ')}</p>
                 )}
               </div>

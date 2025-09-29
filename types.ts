@@ -2,6 +2,8 @@
 export enum ServiceType {
   BATH = 'BATH',
   BATH_AND_GROOMING = 'BATH_AND_GROOMING',
+  VISIT_DAYCARE = 'VISIT_DAYCARE',
+  VISIT_HOTEL = 'VISIT_HOTEL',
 }
 
 export enum PetWeight {

@@ -9,6 +9,14 @@ export const SERVICES = {
     label: 'Banho & Tosa',
     duration: 2, // in hours
   },
+  [ServiceType.VISIT_DAYCARE]: {
+    label: 'Visita para Creche',
+    duration: 1, // in hours
+  },
+  [ServiceType.VISIT_HOTEL]: {
+    label: 'Visita para Hotel',
+    duration: 1, // in hours
+  },
 };
 
 export const PET_WEIGHT_OPTIONS: Record<PetWeight, string> = {
@@ -21,14 +29,19 @@ export const PET_WEIGHT_OPTIONS: Record<PetWeight, string> = {
     [PetWeight.OVER_30]: 'Acima de 30kg',
 };
 
+const visitPrices = {
+  [ServiceType.VISIT_DAYCARE]: 0,
+  [ServiceType.VISIT_HOTEL]: 0,
+};
+
 export const BASE_PRICES: Record<PetWeight, Record<ServiceType, number>> = {
-  [PetWeight.UP_TO_5]: { [ServiceType.BATH]: 65, [ServiceType.BATH_AND_GROOMING]: 130 },
-  [PetWeight.KG_10]: { [ServiceType.BATH]: 75, [ServiceType.BATH_AND_GROOMING]: 150 },
-  [PetWeight.KG_15]: { [ServiceType.BATH]: 85, [ServiceType.BATH_AND_GROOMING]: 170 },
-  [PetWeight.KG_20]: { [ServiceType.BATH]: 95, [ServiceType.BATH_AND_GROOMING]: 190 },
-  [PetWeight.KG_25]: { [ServiceType.BATH]: 105, [ServiceType.BATH_AND_GROOMING]: 210 },
-  [PetWeight.KG_30]: { [ServiceType.BATH]: 115, [ServiceType.BATH_AND_GROOMING]: 230 },
-  [PetWeight.OVER_30]: { [ServiceType.BATH]: 150, [ServiceType.BATH_AND_GROOMING]: 300 },
+  [PetWeight.UP_TO_5]: { [ServiceType.BATH]: 65, [ServiceType.BATH_AND_GROOMING]: 130, ...visitPrices },
+  [PetWeight.KG_10]: { [ServiceType.BATH]: 75, [ServiceType.BATH_AND_GROOMING]: 150, ...visitPrices },
+  [PetWeight.KG_15]: { [ServiceType.BATH]: 85, [ServiceType.BATH_AND_GROOMING]: 170, ...visitPrices },
+  [PetWeight.KG_20]: { [ServiceType.BATH]: 95, [ServiceType.BATH_AND_GROOMING]: 190, ...visitPrices },
+  [PetWeight.KG_25]: { [ServiceType.BATH]: 105, [ServiceType.BATH_AND_GROOMING]: 210, ...visitPrices },
+  [PetWeight.KG_30]: { [ServiceType.BATH]: 115, [ServiceType.BATH_AND_GROOMING]: 230, ...visitPrices },
+  [PetWeight.OVER_30]: { [ServiceType.BATH]: 150, [ServiceType.BATH_AND_GROOMING]: 300, ...visitPrices },
 };
 
 export interface AddonService {
@@ -55,5 +68,6 @@ export const ADDON_SERVICES: AddonService[] = [
 
 
 export const WORKING_HOURS: number[] = [9, 10, 11, 13, 14, 15, 16, 17];
+export const VISIT_WORKING_HOURS: number[] = [9, 10, 11, 12, 13, 14, 15, 16];
 export const LUNCH_HOUR = 12;
 export const MAX_CAPACITY_PER_SLOT = 2; // Two groomers
